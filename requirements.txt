@@ -1,0 +1,2 @@
+# geo-discovery uses the Python standard library only — no install needed.
+# Requires: python3 (>=3.9). Read-only HTTP to the Geo GraphQL endpoint.
