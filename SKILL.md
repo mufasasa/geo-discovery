@@ -79,19 +79,29 @@ render(routed)
 → two ranked tracks: **Integrity** (structural dedup, batch into one merge wave) and
 **Growth** (coverage/depth/freshness, theme-bundled). Below the floor → dropped.
 
-### Stage 5 — Theme heat  ·  Automated
+### Stage 5 — Theme heat + theme-gap diagnosis  ·  Automated
 ```
-python scripts/theme_heat.py --in harvest.json
+python scripts/theme_heat.py  --in harvest.json
+python scripts/theme_gaps.py  --in harvest.json --space <space_id>
 ```
-→ themes classified CROSS-SOURCE (DEEP-eligible) / podcast-only (STANDARD) / news-only
-(provisional). Cross-source agreement = the sustained-heat signal that sets depth tier.
+`theme_heat` classifies themes CROSS-SOURCE (DEEP-eligible) / podcast-only (STANDARD) /
+news-only (provisional) — cross-source agreement is the sustained-heat signal that sets
+depth tier. `theme_gaps` then resolves each hot theme against the target space's Topic
+taxonomy (exact-name + Topic-type filtered) and emits a **theme-level gap**:
+- **Coverage(theme):** no Topic exists → create it.
+- **Structural(theme):** Topic exists but not in this space (e.g. only in podcasts) → attach + develop here.
+- **Depth(theme):** Topic exists in-space but thin/disconnected → develop the page.
+
+Themes are first-class discovery output, not just a heat map: each theme gap becomes a
+`Discovery` (structuring work — build/attach/develop a topic page; feeds `page-developer`).
 
 ### Stage 6 — Publish discoveries  ·  Human-in-loop (review gate)
-Draft a `Discovery` entity per accepted gap (schema in `references/discovery-schema.md`):
-gap type(s), discovered subject, suggested type, recommended action, sources, status
-`Proposed`. Operator reviews; on approval, publish via the `geo-publish` skill.
-**Enrich-vs-create lives here** — a "coverage" gap that's a sub-thing of an existing
-entity (e.g. a program inside a lab) becomes an enrich action, not a new entity.
+Draft a `Discovery` per accepted gap — entity-level AND theme-level — following
+`references/drafting-conventions.md` (human-first name/description/action) and
+`references/discovery-schema.md`. Always set **Publish date**; add the `Trending` gap tag
+when velocity ≥ TREND_TAG_FLOOR. Operator reviews; on approval, publish via `geo-publish`.
+**Enrich-vs-create lives here** — a "coverage" gap that's a sub-thing of an existing entity
+(a program inside a lab, a model from a lab) becomes an enrich/link action, not a new entity.
 
 ## Output
 A ranked Discovery set (two tracks) + a theme map with depth tiers, and — on approval —
@@ -101,6 +111,8 @@ A ranked Discovery set (two tracks) + a theme map with depth tiers, and — on a
 - `scripts/harvest.py` — Stage 1
 - `scripts/gap_diagnostic.py` — Stage 3 (exact-name 5-gap diagnostic)
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
-- `scripts/theme_heat.py` — Stage 5
+- `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
+- `scripts/theme_gaps.py` — Stage 5b (theme-level gap diagnosis → theme Discoveries)
 - `references/ner_prompt.md` — Stage 2 extraction prompt
 - `references/discovery-schema.md` — the Discovery entity schema for Stage 6
+- `references/drafting-conventions.md` — human-first naming/description/action + required props (Stage 6)

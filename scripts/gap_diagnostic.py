@@ -34,7 +34,8 @@ NOISE = {"Claim", "Article", "Quote", "Data block", "Image", "Tweet", "Post",
 # Thresholds (tune against real runs — see CLAUDE.md §14.7).
 DEPTH_MIN = 5      # meaningful relations below this = depth gap
 STALE_DAYS = 30    # entity untouched longer than this + trending = freshness gap
-TREND_FLOOR = 5    # claim mentions at/above this = "trending now"
+TREND_FLOOR = 5    # claim mentions at/above this = "trending now" (freshness check)
+TREND_TAG_FLOOR = 15  # velocity at/above this adds the secondary "TRENDING" gap tag
 
 
 def gql(query: str, retries: int = 3, backoff: float = 1.5) -> dict:
@@ -86,7 +87,10 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
     all_named = [f"{e['name']}[{','.join(t['name'] for t in (e.get('types') or []))}]" for e in ents]
 
     if not ident:
-        return {"candidate": name, "gaps": ["COVERAGE"], "canonical": None,
+        gaps = ["COVERAGE"]
+        if velocity >= TREND_TAG_FLOOR:
+            gaps.append("TRENDING")
+        return {"candidate": name, "gaps": gaps, "canonical": None,
                 "all_named": all_named,
                 "detail": {"coverage": f"{len(ents)} same-name entities, none identity-typed"}}
 
@@ -128,6 +132,12 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
             detail["freshness"] = f"trending ({velocity}) but untouched {age}d"
     except Exception:
         pass
+
+    # TRENDING — secondary multi-value tag: a real gap that's also hot right now.
+    # (Not a standalone gap; only tags candidates that already have a gap.)
+    if gaps and velocity >= TREND_TAG_FLOOR:
+        gaps.append("TRENDING")
+        detail["trending"] = f"velocity {velocity} >= {TREND_TAG_FLOOR}"
 
     return {"candidate": name, "gaps": gaps or ["clean"], "canonical": best,
             "all_named": all_named, "detail": detail}
