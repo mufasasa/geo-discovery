@@ -2,7 +2,7 @@
 name: geo-discovery
 description: >
   Run an independent gap-discovery pass over a Geo space's daily content stream and
-  publish the gaps as Discovery entities. Surfaces coverage, depth, freshness,
+  publish the gaps as Gap finding entities. Surfaces coverage, depth, freshness,
   structural, and trending gaps at both entity and theme altitude. Triggers on
   "run discovery", "discover gaps", "what's missing in <space>", "discovery pass".
 version: latest
@@ -14,7 +14,7 @@ tools: Claude Code
 
 Self-contained discovery engine for the Geo knowledge graph. Mines the daily content
 stream a space already ingests (News stories + AI-podcast episodes + their Claims),
-finds the five gap types, ranks them, and produces Discovery entities for review.
+finds the five gap types, ranks them, and produces Gap finding entities for review.
 
 **Stateless by design.** Every run is independent — it must NOT read prior-run
 findings or drafted waves. Assume no previous run exists. (This is how the process
@@ -34,7 +34,7 @@ get a ranked list of gaps worth acting on.
 - `python3` (standard library only — no pip install needed).
 - Read access to the Geo GraphQL endpoint (baked into the scripts; no auth).
 - For Stage 6 only: the `geo-publish` skill + the operator's signing key (write access).
-- The `Discovery` / `Gap type` / `Discovery status` types must exist on Geo to publish.
+- The `Gap finding` / `Gap type` / `Gap status` types must exist on Geo to publish.
 
 ## Guardrails (non-negotiable)
 - **Exact-name resolution only.** `gap_diagnostic` resolves by `isInsensitive`, never
@@ -93,10 +93,10 @@ taxonomy (exact-name + Topic-type filtered) and emits a **theme-level gap**:
 - **Depth(theme):** Topic exists in-space but thin/disconnected → develop the page.
 
 Themes are first-class discovery output, not just a heat map: each theme gap becomes a
-`Discovery` (structuring work — build/attach/develop a topic page; feeds `page-developer`).
+`Gap finding` (structuring work — build/attach/develop a topic page; feeds `page-developer`).
 
 ### Stage 6 — Publish discoveries  ·  Human-in-loop (review gate)
-Draft a `Discovery` per accepted gap — entity-level AND theme-level — following
+Draft a `Gap finding` per accepted gap — entity-level AND theme-level — following
 `references/drafting-conventions.md` (human-first name/description/action) and
 `references/discovery-schema.md`. Always set **Publish date**; add the `Trending` gap tag
 when velocity ≥ TREND_TAG_FLOOR. Operator reviews; on approval, publish via `geo-publish`.
@@ -104,15 +104,15 @@ when velocity ≥ TREND_TAG_FLOOR. Operator reviews; on approval, publish via `g
 (a program inside a lab, a model from a lab) becomes an enrich/link action, not a new entity.
 
 ## Output
-A ranked Discovery set (two tracks) + a theme map with depth tiers, and — on approval —
-`Discovery` entities published to the space (status `Proposed`).
+A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on approval —
+`Gap finding` entities published to the space (status `Proposed`).
 
 ## Files
 - `scripts/harvest.py` — Stage 1
 - `scripts/gap_diagnostic.py` — Stage 3 (exact-name 5-gap diagnostic)
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
 - `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
-- `scripts/theme_gaps.py` — Stage 5b (theme-level gap diagnosis → theme Discoveries)
+- `scripts/theme_gaps.py` — Stage 5b (theme-level gap diagnosis → theme Gap findings)
 - `references/ner_prompt.md` — Stage 2 extraction prompt
-- `references/discovery-schema.md` — the Discovery entity schema for Stage 6
+- `references/discovery-schema.md` — the Gap finding entity schema for Stage 6
 - `references/drafting-conventions.md` — human-first naming/description/action + required props (Stage 6)

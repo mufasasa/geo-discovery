@@ -4,7 +4,7 @@ theme_gaps.py — theme-level gap diagnostic (Stage 5b).
 
 Takes the themes from theme_heat and, for each hot theme, resolves whether the target
 space has a developed Topic for it — emitting a theme-level gap (Coverage / Structural /
-Depth at Topic altitude). These become theme Discoveries (structuring work: create /
+Depth at Topic altitude). These become theme Gap findings (structuring work: create /
 attach / develop a topic page), distinct from entity discoveries.
 
 Resolution is EXACT-name + Topic-type-filtered (NOT broad substring — that times out on

@@ -1,6 +1,6 @@
-# Discovery drafting conventions (Stage 6)
+# Gap finding drafting conventions (Stage 6)
 
-How to write a `Discovery` record so a human curator can act on it without re-deriving context.
+How to write a `Gap finding` record so a human curator can act on it without re-deriving context.
 Applies to both entity-level and theme-level discoveries.
 
 ## Name — the finding in plain language (NOT a code)
@@ -24,8 +24,8 @@ Applies to both entity-level and theme-level discoveries.
 ## Required properties — always set
 - **Publish date** (datetime, the run date) — MUST be set. (Early runs omitted it; don't.)
 - **Gap types** (multi-value): the primary gap(s) + `Trending` when velocity ≥ TREND_TAG_FLOOR.
-- **Discovery status**: `Proposed`.
-- **Discovered subject**: the existing entity (enrich/dedup) or empty (to-create).
+- **Gap status**: `Proposed`.
+- **Gap finding subject**: the existing entity (enrich/dedup) or empty (to-create).
 - **Discoverer**, **Sources**, **Suggested type** (for to-create), **Topics**.
 
 ## Gap-type notes

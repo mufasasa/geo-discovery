@@ -1,4 +1,4 @@
-# Discovery entity schema (Stage 6)
+# Gap finding entity schema (Stage 6)
 
 **Canonical source:** `../../../ontology-proposal.md` (validated against the live graph
 via ontology-advisor, 2026-05-31). This file is the in-skill summary; if they diverge,
@@ -6,12 +6,12 @@ the proposal wins.
 
 **Target space:** AI datasets — `941964642f4d3e70ef48f54a3915277d` (DAO).
 **Types:** LIVE as of 2026-05-31 (executed) — wire Stage 6 to these IDs:
-- `Discovery` = `1e621514688144938249bc5fc0aef8be`
+- `Gap finding` = `1e621514688144938249bc5fc0aef8be`
 - `Gap type` = `956e794255f04072bd505a7c6aa27d85` (members: Coverage/Depth/Freshness/Structural/Trending)
-- `Discovery status` = `680dbb63a5c544c199e8de245e7fa408` (members: Proposed/Accepted/Deferred/Rejected/Ingested)
-- Props: Discoverer `2a9abcaa7fae4f29a6d0124ed5bd1018` · Gap types `90432d30096b4c9c920b96e22622cdeb` · Discovery status `6dc322401db14c8e9bb54d1ef239912b` · Discovered subject `ce1623ae023748faa8e63a3caab68608` · Suggested type `b9297d240dd84010a87e332b9bab062b` · Recommended action `275dbe3feae64036b9bdbe356ed1a1d1`
+- `Gap status` = `680dbb63a5c544c199e8de245e7fa408` (members: Proposed/Accepted/Deferred/Rejected/Ingested)
+- Props: Discoverer `2a9abcaa7fae4f29a6d0124ed5bd1018` · Gap types `90432d30096b4c9c920b96e22622cdeb` · Gap status `6dc322401db14c8e9bb54d1ef239912b` · Gap finding subject `ce1623ae023748faa8e63a3caab68608` · Suggested type `b9297d240dd84010a87e332b9bab062b` · Recommended action `275dbe3feae64036b9bdbe356ed1a1d1`
 
-## `Discovery`
+## `Gap finding`
 Reuse canonical properties by ID (do not recreate):
 | Property | ID | Data type |
 |---|---|---|
@@ -30,14 +30,14 @@ New properties to create:
 |---|---|---|---|
 | Discoverer | RELATION | Person | who/what surfaced it |
 | **Gap types** | RELATION (multi) | Gap type | plural — multi-value (Topics→Topic pattern) |
-| Discovery status | RELATION (single) | Discovery status | singular — one current status |
-| Discovered subject | RELATION (open) | any | the candidate; empty if to-create |
+| Gap status | RELATION (single) | Gap status | singular — one current status |
+| Gap finding subject | RELATION (open) | any | the candidate; empty if to-create |
 | Suggested type | RELATION | Type | when candidate is novel |
 | Recommended action | TEXT | — | per-gap remedy; flag enrich-vs-create |
 
 ## Enums
 - **Gap type** (type) → members: Coverage · Depth · Freshness · Structural · Trending
-- **Discovery status** (type) → members: Proposed · Accepted · Deferred · Rejected · Ingested
+- **Gap status** (type) → members: Proposed · Accepted · Deferred · Rejected · Ingested
 
 ## Stage-6 rules
 - A "coverage" gap that is a sub-thing of an existing entity → `Recommended action` = enrich the parent, NOT a new entity.
