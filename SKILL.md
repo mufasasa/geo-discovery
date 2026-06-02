@@ -81,6 +81,10 @@ from scripts.prioritize import route, render
 routed = route([{ "name":..., "relevance":..., "anchors":{...}, "velocity":..., "gaps":[...] }, ...])
 render(routed)
 ```
+Build each route dict from the prior stages: `name` = the diagnostic's `candidate`, `gaps` = its
+`gaps`, `velocity` = the Stage-2 mention count, and `relevance`/`anchors` = your operator judgment.
+Don't pass `diagnose()` output straight into `route()` — it keys the name as `candidate`, so you'll
+hit `KeyError: 'name'`.
 → two ranked tracks: **Integrity** (structural dedup, batch into one merge wave) and
 **Growth** (coverage/depth/freshness, theme-bundled). Below the floor → dropped.
 
