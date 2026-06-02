@@ -55,7 +55,7 @@ get a ranked list of gaps worth acting on.
 
 ### Stage 1 — Harvest  ·  Automated
 ```
-python scripts/harvest.py --space <space_id> --days 2 --with-episodes --out harvest.json
+python3 scripts/harvest.py --space <space_id> --days 2 --with-episodes --out harvest.json
 ```
 → `harvest.json`: recent News stories (+ allowlist episodes) with their `claims[]` and `topics[]`.
 
@@ -86,8 +86,8 @@ render(routed)
 
 ### Stage 5 — Theme heat + theme-gap diagnosis  ·  Automated
 ```
-python scripts/theme_heat.py  --in harvest.json
-python scripts/theme_gaps.py  --in harvest.json --space <space_id>
+python3 scripts/theme_heat.py  --in harvest.json
+python3 scripts/theme_gaps.py  --in harvest.json --space <space_id>
 ```
 `theme_heat` classifies themes CROSS-SOURCE (DEEP-eligible) / podcast-only (STANDARD) /
 news-only (provisional) — cross-source agreement is the sustained-heat signal that sets

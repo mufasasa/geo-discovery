@@ -19,9 +19,10 @@ any error. Follow THIS file for Stage 6; use `geo-publish` only for the SDK prim
   NODE_PATH=<geo-publish-skill-dir>/node_modules \
     bun --env-file=.env.geo-publish run <script>.mjs
   ```
-- Key file `.env.geo-publish` at the project root. The var name is operator-chosen: this operator
-  uses `MOH_PRIVATE_KEY`; geo-publish's default is `GEO_PRIVATE_KEY`. Read whichever is set — never
-  have the operator paste the key into chat.
+- Key file `.env.geo-publish` at the project root holding `GEO_PRIVATE_KEY=0x…` — the variable the
+  shipped geo-publish CLIs (`bin/whoami.mjs`, `bin/publish-entity.mjs`) read, so any ad-hoc publish
+  script you write should read the same name. Never have the operator paste the key into chat; ask
+  them to create the file in their editor and reply "done".
 
 ## The propose + vote sequence (FAST does NOT auto-execute)
 1. **Propose:**

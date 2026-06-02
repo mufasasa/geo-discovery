@@ -1,8 +1,9 @@
 # Gap finding entity schema (Stage 6)
 
-**Canonical source:** `../../../ontology-proposal.md` (validated against the live graph
-via ontology-advisor, 2026-05-31). This file is the in-skill summary; if they diverge,
-the proposal wins.
+**Source:** validated against the live graph via ontology-advisor (2026-05-31). The type and
+property IDs below are the live, authoritative values — use them directly; this file is
+self-contained. (The fuller governance write-up lives in the operator's `ontology-proposal.md`,
+which is outside this repo and not needed to run Stage 6.)
 
 **Target space:** AI datasets — `941964642f4d3e70ef48f54a3915277d` (DAO).
 **Types:** LIVE as of 2026-05-31 (executed) — wire Stage 6 to these IDs:
