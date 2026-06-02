@@ -37,6 +37,28 @@ STALE_DAYS = 30    # entity untouched longer than this + trending = freshness ga
 TREND_FLOOR = 5    # claim mentions at/above this = "trending now" (freshness check)
 TREND_TAG_FLOOR = 15  # velocity at/above this adds the secondary "TRENDING" gap tag
 
+# Identity-type IDs — used to type-scope the fuzzy fallback so it never buries
+# (substring "OpenAI" = 1596 all-types, but 5 identity-typed). Keep in sync with IDENTITY.
+IDENTITY_TYPE_IDS = [
+    "c7a4fc6d1afc53250a22d4209391dc79",  # Model
+    "bdfa487660d4628c6a1660410f18262f",  # Model family
+    "d44415aeaff1218c4035fe9a3791aff5",  # Provider
+    "fa464fe0c27b4d54bbac4caa20ca7781",  # Tool
+    "0c4babfb43893486af827341bbf32e09",  # Dataset
+    "a7f1e5c799a04089e8741f412f135f42",  # Benchmark
+    "f3c1c8687bed9cb15800e5c8ff38033d",  # Lab
+    "9069cd7680cabc7b5e7aace5bc0da4d3",  # Agent
+    "5ef5a5860f274d8e8f6c59ae5b3e89e2",  # Topic
+    "7ed45f2bc48b419e8e4664d5ff680b0d",  # Person
+    "484a18c5030a499cb0f2ef588ff16d50",  # Project
+    "b9a456d44ee44f418f9cca322871cafa",  # Project (variant)
+    "e059a29e6f6b437bbc15c7983d078c0d",  # Company
+    "9547f4fb78744de0a9a9fdd7b4c01c0c",  # Organization
+]
+TYPES_REL = "8f151ba4de204e3c9cb499ddf96f48f1"   # the Types relation property
+_DASHES = "-‐‑‒–—―−"  # hyphen, NB-hyphen, en/em dash, minus…
+_STOP = {"ai", "the", "of", "and", "an", "a"}
+
 
 def gql(query: str, retries: int = 3, backoff: float = 1.5) -> dict:
     body = json.dumps({"query": query}).encode()
@@ -60,6 +82,83 @@ def gql(query: str, retries: int = 3, backoff: float = 1.5) -> dict:
 
 def _esc(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+import unicodedata
+
+
+def _norm(s: str) -> str:
+    """Normalize a name for comparison: NFKC, fold all dash-confusables to '-',
+    smart-quotes to straight, collapse whitespace, lowercase. This is why exact
+    server matches miss real entities (e.g. 'GPT‑5.5' with U+2011 hyphen)."""
+    s = unicodedata.normalize("NFKC", s or "")
+    for d in _DASHES:
+        s = s.replace(d, "-")
+    s = s.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    s = s.replace(" ", " ")
+    return " ".join(s.lower().split())
+
+
+def _variants(name: str):
+    """Dash/space variant spellings to query exactly (catches unicode-hyphen names)."""
+    vs = set()
+    if any(c in name for c in _DASHES):
+        base = name
+        for d in _DASHES:
+            base = base.replace(d, "\x00")
+        for s in list(_DASHES) + [" "]:
+            vs.add(base.replace("\x00", s))
+    if " " in name:
+        for s in "-‑–":
+            vs.add(name.replace(" ", s))
+    vs.discard(name)
+    return list(vs)[:8]
+
+
+def _token_subset(cand_n: str, name_n: str) -> bool:
+    """True if the (normalized) candidate is a whole-token subset of a (normalized)
+    longer name — e.g. 'mythos' inside 'claude mythos preview'. Guards short/common."""
+    if len(cand_n) < 4 or cand_n in _STOP:
+        return False
+    ctoks = cand_n.replace("-", " ").split()
+    ntoks = set(name_n.replace("-", " ").split())
+    return bool(ctoks) and all(t in ntoks for t in ctoks)
+
+
+_FULL = ('id name updatedAt types { name } '
+         'values(first:60){ nodes { property { name } text } } '
+         'relations(first:200){ nodes { type { name } } }')
+
+
+def _fuzzy_identity(candidate: str, space_id: str = AI_SPACE):
+    """Fallback when exact-name finds no identity entity. Returns [(entity, kind)] where
+    kind is 'exact' (same entity, format variant) or 'token' (candidate is a token in a
+    longer/related entity name). Type-scoped → no burial."""
+    cand_n = _norm(candidate)
+    out = {}
+    # 1. variant exact queries — catch unicode-dash / space spellings (GPT‑5.5)
+    for v in _variants(candidate):
+        q = (f'{{ entitiesConnection(spaceId:"{space_id}", first:20, '
+             f'filter:{{name:{{isInsensitive:"{_esc(v)}"}}}}){{ nodes {{ {_FULL} }} }} }}')
+        for e in (gql(q).get("entitiesConnection") or {}).get("nodes") or []:
+            if any(t["name"] in IDENTITY for t in (e.get("types") or [])) and _norm(e["name"]) == cand_n:
+                out[e["id"]] = (e, "exact")
+    # 2. type-scoped substring — catch token containment (Mythos in 'Claude Mythos Preview')
+    inlist = ",".join(f'"{i}"' for i in IDENTITY_TYPE_IDS)
+    q = (f'{{ entitiesConnection(spaceId:"{space_id}", first:25, filter:{{ '
+         f'name:{{includesInsensitive:"{_esc(candidate)}"}}, '
+         f'relations:{{some:{{typeId:{{is:"{TYPES_REL}"}}, toEntityId:{{in:[{inlist}]}}}}}} }})'
+         f'{{ nodes {{ {_FULL} }} }} }}')
+    try:
+        for e in (gql(q).get("entitiesConnection") or {}).get("nodes") or []:
+            en = _norm(e["name"])
+            if en == cand_n:
+                out.setdefault(e["id"], (e, "exact"))
+            elif _token_subset(cand_n, en):
+                out.setdefault(e["id"], (e, "token"))
+    except Exception:
+        pass
+    return list(out.values())
 
 
 def exact_entities(name: str, space_id: str = AI_SPACE) -> list[dict]:
@@ -86,13 +185,32 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
     ident = [e for e in ents if any(t["name"] in IDENTITY for t in (e.get("types") or []))]
     all_named = [f"{e['name']}[{','.join(t['name'] for t in (e.get('types') or []))}]" for e in ents]
 
+    related = []
+    if not ident:
+        # exact-name found nothing — try the normalized + type-scoped fuzzy fallback
+        # (catches unicode-dash variants like 'GPT‑5.5' and tokens like 'Mythos' in
+        #  'Claude Mythos Preview'). Without this, both false-positive as COVERAGE.
+        fuzzy = _fuzzy_identity(name, space_id)
+        ident = [e for e, k in fuzzy if k == "exact"]      # same entity, format variant -> NOT a gap
+        related = [e for e, k in fuzzy if k == "token"]    # related/longer-name entity -> flag, don't duplicate
+        if ident:
+            all_named = [f"{e['name']}[{','.join(t['name'] for t in (e.get('types') or []))}]" for e in ident]
+
     if not ident:
         gaps = ["COVERAGE"]
         if velocity >= TREND_TAG_FLOOR:
             gaps.append("TRENDING")
-        return {"candidate": name, "gaps": gaps, "canonical": None,
-                "all_named": all_named,
-                "detail": {"coverage": f"{len(ents)} same-name entities, none identity-typed"}}
+        detail = {"coverage": "no identity entity (exact or fuzzy)"}
+        canonical = None
+        if related:
+            r = related[0]
+            detail["related"] = ("⚠ related entity exists: "
+                f"{r['name']} [{','.join(t['name'] for t in (r.get('types') or []))}] ({r['id']}) "
+                "— review: add type / enrich vs create new; do NOT duplicate")
+            detail["related_id"] = r["id"]
+            canonical = r
+        return {"candidate": name, "gaps": gaps, "canonical": canonical,
+                "all_named": all_named, "detail": detail}
 
     best = max(ident, key=_meaningful_rels)
     br = _meaningful_rels(best)
