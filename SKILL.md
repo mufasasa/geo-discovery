@@ -37,8 +37,13 @@ get a ranked list of gaps worth acting on.
 - The `Gap finding` / `Gap type` / `Gap status` types must exist on Geo to publish.
 
 ## Guardrails (non-negotiable)
-- **Exact-name resolution only.** `gap_diagnostic` resolves by `isInsensitive`, never
-  substring — substring buries popular entities and produces false "missing" verdicts.
+- **Resolve exact-name first, then a normalized + type-scoped fuzzy fallback.** `gap_diagnostic`
+  matches by `isInsensitive`, then normalizes (folds unicode dash-confusables like the U+2011 in
+  `GPT‑5.5`) and runs a TYPE-SCOPED substring over identity types only (catches `Mythos` inside
+  `Claude Mythos Preview`). NEVER a bare all-types substring — that buries popular entities
+  (`OpenAI` = 1596 all-types hits) and produces false "missing" verdicts. A norm-equal hit = same
+  entity (format variant, not a gap); a token/cross-type hit = related entity → keep the gap but
+  set `Gap finding subject` and flag enrich-vs-create.
 - **Existence ≠ no gap.** Run all five checks; an entity that exists can still be thin,
   stale, or duplicated.
 - **Enrich, don't duplicate.** Before any "create", confirm the entity doesn't exist.
@@ -103,16 +108,24 @@ when velocity ≥ TREND_TAG_FLOOR. Operator reviews; on approval, publish via `g
 **Enrich-vs-create lives here** — a "coverage" gap that's a sub-thing of an existing entity
 (a program inside a lab, a model from a lab) becomes an enrich/link action, not a new entity.
 
+**Publish mechanics — follow `references/stage6-publish.md`, not the generic geo-publish doc.**
+Gap findings go to a DAO space via propose+vote, and several geo-publish defaults silently fail
+here: FAST does NOT auto-execute (you must cast a separate YES vote), the real `voteProposal`
+signature differs from the doc, `type:"url"` is unsupported (use `text`), and dates land in the
+`datetime` field. The reference has the worked target (AI datasets DAO), the exact call shapes,
+and the post-publish verification gotchas.
+
 ## Output
 A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on approval —
 `Gap finding` entities published to the space (status `Proposed`).
 
 ## Files
 - `scripts/harvest.py` — Stage 1
-- `scripts/gap_diagnostic.py` — Stage 3 (exact-name 5-gap diagnostic)
+- `scripts/gap_diagnostic.py` — Stage 3 (5-gap diagnostic; exact-name + normalized type-scoped fuzzy fallback)
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
 - `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
 - `scripts/theme_gaps.py` — Stage 5b (theme-level gap diagnosis → theme Gap findings)
 - `references/ner_prompt.md` — Stage 2 extraction prompt
 - `references/discovery-schema.md` — the Gap finding entity schema for Stage 6
 - `references/drafting-conventions.md` — human-first naming/description/action + required props (Stage 6)
+- `references/stage6-publish.md` — Stage 6 DAO publish mechanics + gotchas (propose+vote, voteProposal signature, url→text, dates)
