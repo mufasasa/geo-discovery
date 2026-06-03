@@ -37,7 +37,7 @@ _DENY_SUFFIX = (" category", " status", " type", " standard",  # enum / taxonomy
 # One line per space; add new spaces here. Crypto datasets ID: TBD (operator).
 DATASETS_SPACE = {
     "41e851610e13a19441c4d980f2f2ce6b": "941964642f4d3e70ef48f54a3915277d",  # AI -> AI datasets
-    # "c9f267dcb0d270718c2a3c45a64afd32": "<crypto-datasets-space-id>",        # crypto -> TBD
+    "c9f267dcb0d270718c2a3c45a64afd32": "5908c73ad336472ccbd983491d2d17e4",  # crypto -> crypto datasets (DAO 0xf6B3938c48ADdE5C6570d968533601AcC804479b)
 }
 
 
