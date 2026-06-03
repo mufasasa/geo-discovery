@@ -70,6 +70,14 @@ def _load_candidates(path):
 def cmd_diagnose(a):
     _banner(a.space)
     cands = _load_candidates(a.candidates)
+    total = len(cands)
+    if a.top and total > a.top:
+        cands.sort(key=lambda c: -c["velocity"])
+        dropped = cands[a.top:]
+        cands = cands[:a.top]
+        print(f"capped to top {a.top} of {total} candidates by velocity "
+              f"(dropped {len(dropped)} below velocity {cands[-1]['velocity']}; "
+              f"they rank below the actioned top-N anyway)")
     n = len(cands)
     print(f"\ndiagnosing {n} candidates…")
     profiles, t0 = [], time.time()
@@ -92,6 +100,31 @@ def cmd_diagnose(a):
     tally = Counter(g for p in profiles for g in (p["gaps"] or []))
     print(f"\ndone in {int(time.time()-t0)}s -> {a.out}")
     print("gap tally:", dict(tally))
+
+
+def cmd_theme(a):
+    """Stage 5 — theme heat + theme-gap diagnosis, capped by heat and BATCH-resolved
+    (one POST per ~8 themes) so it finishes in seconds at any scale, with progress."""
+    import theme_gaps as TG
+    docs = json.load(open(a.harvest))
+    rows = [r for r in TH.themes(docs) if (r["news"] + r["pod"]) >= a.min_heat]
+    rows.sort(key=lambda r: -(r["news"] + r["pod"]))
+    capped = rows[:a.top]
+    if len(rows) > a.top:
+        print(f"capped to top {a.top} of {len(rows)} themes by heat")
+    print(f"resolving {len(capped)} themes (batched)…")
+    diags = {d["theme"]: d for d in TG.diagnose_themes([r["theme"] for r in capped], a.space)}
+    out = []
+    for r in capped:
+        d = diags[r["theme"]]
+        cross = r.get("signal") == "CROSS-SOURCE"
+        out.append({"theme": r["theme"], "heat": r["news"] + r["pod"], "cross_source": cross,
+                    "gap": d["gap"], "detail": d["detail"]})
+        tag = f"{d['gap']}(theme)" if d["gap"] else "—ok—"
+        print(f"  {('🔥' if cross else '  ')} {r['theme'][:38]:38} heat={r['news']+r['pod']:<3} {tag}")
+    json.dump(out, open(a.out, "w"), indent=1)
+    from collections import Counter
+    print(f"\n-> {a.out}  ({dict(Counter(o['gap'] for o in out if o['gap']))})")
 
 
 def cmd_route(a):
@@ -130,7 +163,12 @@ def main():
     sh.add_argument("--out", default="harvest.json"); sh.set_defaults(fn=cmd_harvest)
     dg = sub.add_parser("diagnose")
     dg.add_argument("--space", required=True); dg.add_argument("--candidates", required=True)
+    dg.add_argument("--top", type=int, default=60, help="cap: diagnose top-N candidates by velocity (0=all)")
     dg.add_argument("--out", default="profiles.json"); dg.set_defaults(fn=cmd_diagnose)
+    th = sub.add_parser("theme")
+    th.add_argument("--space", required=True); th.add_argument("--harvest", default="harvest.json")
+    th.add_argument("--min-heat", type=int, default=2); th.add_argument("--top", type=int, default=20)
+    th.add_argument("--out", default="theme_gaps.json"); th.set_defaults(fn=cmd_theme)
     rt = sub.add_parser("route")
     rt.add_argument("--profiles", required=True)
     rt.add_argument("--harvest", help="harvest.json — enables data-driven theme-fit (recommended)")
