@@ -59,6 +59,32 @@ TYPES_REL = "8f151ba4de204e3c9cb499ddf96f48f1"   # the Types relation property
 _DASHES = "-‐‑‒–—―−"  # hyphen, NB-hyphen, en/em dash, minus…
 _STOP = {"ai", "the", "of", "and", "an", "a"}
 
+# Per-space identity types are AUTO-DERIVED from the graph (space_profile.py) so the
+# diagnostic works on any space with no hand-tuning. The AI constants above are the
+# fallback if profiling is unavailable. Cached per space.
+_IDENT_CACHE: dict = {}
+
+
+def _identity_for(space_id: str):
+    """(identity_name_set, identity_type_id_list) for a space — derived, AI-fallback."""
+    if space_id in _IDENT_CACHE:
+        return _IDENT_CACHE[space_id]
+    names, ids = set(IDENTITY), list(IDENTITY_TYPE_IDS)
+    try:
+        try:
+            from space_profile import profile
+        except ImportError:
+            import os
+            sys.path.insert(0, os.path.dirname(__file__))
+            from space_profile import profile
+        p = profile(space_id)
+        if p.get("identity_type_ids"):
+            names, ids = set(p["identity_type_names"]), p["identity_type_ids"]
+    except Exception:
+        pass
+    _IDENT_CACHE[space_id] = (names, ids)
+    return _IDENT_CACHE[space_id]
+
 
 def gql(query: str, retries: int = 3, backoff: float = 1.5) -> dict:
     body = json.dumps({"query": query}).encode()
@@ -130,10 +156,13 @@ _FULL = ('id name updatedAt types { name } '
          'relations(first:200){ nodes { type { name } } }')
 
 
-def _fuzzy_identity(candidate: str, space_id: str = AI_SPACE):
+def _fuzzy_identity(candidate: str, space_id: str = AI_SPACE,
+                    identity_names=None, identity_ids=None):
     """Fallback when exact-name finds no identity entity. Returns [(entity, kind)] where
     kind is 'exact' (same entity, format variant) or 'token' (candidate is a token in a
     longer/related entity name). Type-scoped → no burial."""
+    if identity_names is None or identity_ids is None:
+        identity_names, identity_ids = _identity_for(space_id)
     cand_n = _norm(candidate)
     out = {}
     # 1. variant exact queries — catch unicode-dash / space spellings (GPT‑5.5)
@@ -141,10 +170,10 @@ def _fuzzy_identity(candidate: str, space_id: str = AI_SPACE):
         q = (f'{{ entitiesConnection(spaceId:"{space_id}", first:20, '
              f'filter:{{name:{{isInsensitive:"{_esc(v)}"}}}}){{ nodes {{ {_FULL} }} }} }}')
         for e in (gql(q).get("entitiesConnection") or {}).get("nodes") or []:
-            if any(t["name"] in IDENTITY for t in (e.get("types") or [])) and _norm(e["name"]) == cand_n:
+            if any(t["name"] in identity_names for t in (e.get("types") or [])) and _norm(e["name"]) == cand_n:
                 out[e["id"]] = (e, "exact")
     # 2. type-scoped substring — catch token containment (Mythos in 'Claude Mythos Preview')
-    inlist = ",".join(f'"{i}"' for i in IDENTITY_TYPE_IDS)
+    inlist = ",".join(f'"{i}"' for i in identity_ids)
     q = (f'{{ entitiesConnection(spaceId:"{space_id}", first:25, filter:{{ '
          f'name:{{includesInsensitive:"{_esc(candidate)}"}}, '
          f'relations:{{some:{{typeId:{{is:"{TYPES_REL}"}}, toEntityId:{{in:[{inlist}]}}}}}} }})'
@@ -181,8 +210,9 @@ def _meaningful_rels(e: dict) -> int:
 def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
     """Run all five gap checks on a candidate. Returns:
     {candidate, gaps[], canonical, all_named[], detail{}}.  gaps can be multiple."""
+    identity_names, identity_ids = _identity_for(space_id)
     ents = exact_entities(name, space_id)
-    ident = [e for e in ents if any(t["name"] in IDENTITY for t in (e.get("types") or []))]
+    ident = [e for e in ents if any(t["name"] in identity_names for t in (e.get("types") or []))]
     all_named = [f"{e['name']}[{','.join(t['name'] for t in (e.get('types') or []))}]" for e in ents]
 
     related = []
@@ -190,7 +220,7 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
         # exact-name found nothing — try the normalized + type-scoped fuzzy fallback
         # (catches unicode-dash variants like 'GPT‑5.5' and tokens like 'Mythos' in
         #  'Claude Mythos Preview'). Without this, both false-positive as COVERAGE.
-        fuzzy = _fuzzy_identity(name, space_id)
+        fuzzy = _fuzzy_identity(name, space_id, identity_names, identity_ids)
         ident = [e for e, k in fuzzy if k == "exact"]      # same entity, format variant -> NOT a gap
         related = [e for e, k in fuzzy if k == "token"]    # related/longer-name entity -> flag, don't duplicate
         if ident:
@@ -224,6 +254,11 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
         gaps.append("STRUCTURAL")
         if len(ident) > 1:
             detail["structural"] = "multiple same-name identity entities: " + " | ".join(all_named)
+            # Emit the resolved IDs so Stage 6 can write the merge action without re-resolving.
+            detail["dup_ids"] = [{"id": e["id"], "name": e["name"],
+                                  "types": [t["name"] for t in (e.get("types") or [])],
+                                  "rels": _meaningful_rels(e)} for e in ident]
+            detail["canonical_id"] = best["id"]
         if dup_types:
             detail["structural_duptype"] = f"duplicated type(s) on one entity: {dup_types} ({best['name']} [{','.join(types)}])"
 

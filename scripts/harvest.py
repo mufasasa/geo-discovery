@@ -21,9 +21,10 @@ ENDPOINT = "https://testnet-api.geobrowser.io/graphql"
 NEWS_TYPE = "e550fe517e904b2c8fffdf13408f5634"
 EPISODE_TYPE = "972d201ad78045689e01543f67b26bee"
 PODCASTS_SPACE = "b5a31f8182b042437ede0f84ee02f104"
-# AI-podcast allowlist — substring match on parent Podcast name. NOT a keyword filter.
-PODCAST_ALLOWLIST = ["eye on a.i", "eye on ai", "ai daily brief", "cognitive revolution",
-                     "super data science", "latent space", "no priors"]
+# On-domain podcasts are now derived per space by TOPIC OVERLAP (see harvest()), not a
+# hand-curated allowlist — so the workflow self-configures on any space. An episode is
+# kept iff its Topics overlap the target space's own topic vocabulary (from its news).
+MIN_TOPIC_OVERLAP = 1
 
 
 def gql(query, retries=3, backoff=1.5):
@@ -78,15 +79,21 @@ def _doc(eid):
             "podcast": (names("Podcast") or [""])[0]}
 
 
-def harvest(space_id, days, with_episodes=False):
+def harvest(space_id, days, with_episodes=False, min_overlap=MIN_TOPIC_OVERLAP):
     docs = []
     for n in _recent(NEWS_TYPE, space_id, days):
         d = _doc(n["id"]); d["kind"] = "news"; docs.append(d)
     if with_episodes:
+        # the space's topic vocabulary, derived from its own news (lowercased)
+        space_topics = {t.lower() for d in docs for t in (d.get("topics") or []) if t}
         for n in _recent(EPISODE_TYPE, PODCASTS_SPACE, days):
             d = _doc(n["id"])
-            if any(a in (d.get("podcast") or "").lower() for a in PODCAST_ALLOWLIST):
-                d["kind"] = "episode"; docs.append(d)
+            ep_topics = {t.lower() for t in (d.get("topics") or []) if t}
+            overlap = ep_topics & space_topics
+            # keep an episode only if its topics overlap the target space (on-domain),
+            # so crypto runs pull crypto shows and AI runs pull AI shows — no allowlist.
+            if len(overlap) >= min_overlap:
+                d["kind"] = "episode"; d["topic_overlap"] = sorted(overlap); docs.append(d)
     return docs
 
 
@@ -95,9 +102,10 @@ if __name__ == "__main__":
     ap.add_argument("--space", required=True)
     ap.add_argument("--days", type=int, default=2)
     ap.add_argument("--with-episodes", action="store_true")
+    ap.add_argument("--min-topic-overlap", type=int, default=MIN_TOPIC_OVERLAP)
     ap.add_argument("--out", default="harvest.json")
     a = ap.parse_args()
-    docs = harvest(a.space, a.days, a.with_episodes)
+    docs = harvest(a.space, a.days, a.with_episodes, a.min_topic_overlap)
     json.dump(docs, open(a.out, "w"), indent=1)
     nnews = sum(1 for d in docs if d["kind"] == "news")
     neps = sum(1 for d in docs if d["kind"] == "episode")

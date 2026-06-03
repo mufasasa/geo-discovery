@@ -13,8 +13,13 @@ tools: Claude Code
 # geo-discovery
 
 Self-contained discovery engine for the Geo knowledge graph. Mines the daily content
-stream a space already ingests (News stories + AI-podcast episodes + their Claims),
-finds the five gap types, ranks them, and produces Gap finding entities for review.
+stream a space already ingests (News stories + topic-matched podcast episodes + their
+Claims), finds the five gap types, ranks them, and produces Gap finding entities for review.
+
+**Self-configuring per space.** Identity types, on-domain podcasts, and the publish
+target are AUTO-DERIVED from the target space at run time (`scripts/space_profile.py`),
+so the same skill runs on AI / crypto / health / any space with no per-space tuning. The
+only hand-maintained knob is the global content/taxonomy denylist in `space_profile.py`.
 
 **Stateless by design.** Every run is independent — it must NOT read prior-run
 findings or drafted waves. Assume no previous run exists. (This is how the process
@@ -36,6 +41,16 @@ get a ranked list of gaps worth acting on.
 - For Stage 6 only: the `geo-publish` skill + the operator's signing key (write access).
 - The `Gap finding` / `Gap type` / `Gap status` types must exist on Geo to publish.
 
+## Configuration — auto-derived, not hand-tuned
+Run `python3 scripts/space_profile.py <space_id>` to see what the run will use:
+- **Identity types** = the space's own types minus a global content/taxonomy denylist minus
+  orphan types. (AI → Model/Provider/Lab/Agent…; crypto → Project/Protocol/Token/Network/DEX…)
+- **On-domain podcasts** = episodes whose Topics overlap the space's own topic vocabulary
+  (no allowlist; `harvest.py` derives it).
+- **Publish target** = the space's datasets space from `space_profile.DATASETS_SPACE` (add one
+  line per space; reuses the shared Gap-finding ontology by ID).
+New space → no config edits; only add its datasets-space mapping before Stage 6.
+
 ## Guardrails (non-negotiable)
 - **Resolve exact-name first, then a normalized + type-scoped fuzzy fallback.** `gap_diagnostic`
   matches by `isInsensitive`, then normalizes (folds unicode dash-confusables like the U+2011 in
@@ -55,9 +70,11 @@ get a ranked list of gaps worth acting on.
 
 ### Stage 1 — Harvest  ·  Automated
 ```
-python3 scripts/harvest.py --space <space_id> --days 2 --with-episodes --out harvest.json
+python3 scripts/run.py harvest --space <space_id> --days 2 --with-episodes --out harvest.json
 ```
-→ `harvest.json`: recent News stories (+ allowlist episodes) with their `claims[]` and `topics[]`.
+(prints the auto-derived profile banner, then harvests). → `harvest.json`: recent News stories
+(+ topic-matched podcast episodes) with their `claims[]` and `topics[]`. Episodes are kept by
+topic-overlap with the space — no allowlist.
 
 ### Stage 2 — Extract candidates (NER)  ·  Automated (LLM)
 Read `harvest.json`. Following `references/ner_prompt.md`, extract the distinct named
@@ -65,13 +82,16 @@ entities (orgs, labs, models, products, programs, people) referenced in the clai
 and story titles. → `candidates[]` (list of names).
 
 ### Stage 3 — Diagnose  ·  Automated
-For each candidate, run the 5-gap diagnostic:
-```python
-from scripts.gap_diagnostic import diagnose
-# velocity = how many of the harvest's claims mention this candidate
-profiles = [diagnose(name, space_id, velocity=v) for name, v in candidates_with_velocity]
+Write the Stage-2 output to `candidates.json` (`[{"name","velocity"}, …]`) and run the driver —
+it diagnoses every candidate with live PROGRESS (no polling a background job) and writes
+`profiles.json` with the resolved IDs already filled in:
 ```
-→ per-candidate `{gaps[], canonical, detail}`.
+python3 scripts/run.py diagnose --space <space_id> --candidates candidates.json --out profiles.json
+```
+Identity resolution is **auto-derived per space** (no hardcoded type list). Each profile carries
+`gaps[]`, `canonical_id`, and — for structural dedup — `dup_ids[]` (the exact entities to merge),
+so Stage 6 writes the merge/create action without re-resolving entities. (Importable too:
+`from gap_diagnostic import diagnose`.)
 
 ### Stage 4 — Score + route  ·  Human-in-loop + Automated
 Assign each candidate `relevance` (0–1) and `anchors` (which strategic anchors it
@@ -124,7 +144,9 @@ A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on
 `Gap finding` entities published to the space (status `Proposed`).
 
 ## Files
-- `scripts/harvest.py` — Stage 1
+- `scripts/space_profile.py` — auto-derives identity types + datasets target per space (the global denylist lives here)
+- `scripts/run.py` — driver: `profile` / `harvest` / `diagnose` subcommands (progress + structured output; run this instead of authoring glue)
+- `scripts/harvest.py` — Stage 1 (topic-overlap episode filter)
 - `scripts/gap_diagnostic.py` — Stage 3 (5-gap diagnostic; exact-name + normalized type-scoped fuzzy fallback)
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
 - `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
