@@ -32,8 +32,9 @@ get a ranked list of gaps worth acting on.
 ## Inputs
 - `space_id` (required) — the Geo space to run against (e.g. AI `41e851610e13a19441c4d980f2f2ce6b`).
 - `days` (default 2) — recency window for the harvest.
-- `strategic_anchors` (operator judgment) — this cycle's focus, e.g. `frontier labs, AI agents, compute & chips`.
-- `relevance_floor` (default 0.4), `action_capacity` (default 5 per track).
+- `strategic_anchors` — **OPTIONAL** bias only. Default runs need none: relevance is data-driven
+  (trending + theme-fit). Pass `--anchors a,b,c` to Stage-4 routing only if you want to tilt a cycle.
+- `action_capacity` (default 5 per track).
 
 ## Dependencies
 - `python3` (standard library only — no pip install needed).
@@ -93,20 +94,18 @@ Identity resolution is **auto-derived per space** (no hardcoded type list). Each
 so Stage 6 writes the merge/create action without re-resolving entities. (Importable too:
 `from gap_diagnostic import diagnose`.)
 
-### Stage 4 — Score + route  ·  Human-in-loop + Automated
-Assign each candidate `relevance` (0–1) and `anchors` (which strategic anchors it
-matches) — operator judgment. `velocity` = claim-mention count from Stage 1.
-```python
-from scripts.prioritize import route, render
-routed = route([{ "name":..., "relevance":..., "anchors":{...}, "velocity":..., "gaps":[...] }, ...])
-render(routed)
+### Stage 4 — Score + route  ·  Automated (no input required)
 ```
-Build each route dict from the prior stages: `name` = the diagnostic's `candidate`, `gaps` = its
-`gaps`, `velocity` = the Stage-2 mention count, and `relevance`/`anchors` = your operator judgment.
-Don't pass `diagnose()` output straight into `route()` — it keys the name as `candidate`, so you'll
-hit `KeyError: 'name'`.
+python3 scripts/run.py route --profiles profiles.json --harvest harvest.json
+```
+Ranking is **data-driven** — there is NO manual `relevance` or `strategic_anchors` to enter.
+Score ≈ `trending(velocity) + gap_value + theme_fit`, where the hot themes are derived from the
+harvest itself (Stage-5 cross-source signal) and `theme_fit` boosts candidates that belong to a
+hot theme. (Strategic anchors presupposed what discovery is meant to surface; they're now an
+OPTIONAL `--anchors a,b,c` bias, not a required input.)
 → two ranked tracks: **Integrity** (structural dedup, batch into one merge wave) and
-**Growth** (coverage/depth/freshness, theme-bundled). Below the floor → dropped.
+**Growth** (coverage/depth/freshness, theme-bundled). The Stage-6 review gate is where the
+operator de-selects anything off-domain — no per-candidate scoring needed.
 
 ### Stage 5 — Theme heat + theme-gap diagnosis  ·  Automated
 ```

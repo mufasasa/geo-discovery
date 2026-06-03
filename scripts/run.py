@@ -26,6 +26,8 @@ import argparse, json, sys, time
 from space_profile import profile as space_profile
 from gap_diagnostic import diagnose
 import harvest as H
+import theme_heat as TH
+from prioritize import route, render
 
 
 def _banner(space_id):
@@ -92,6 +94,31 @@ def cmd_diagnose(a):
     print("gap tally:", dict(tally))
 
 
+def cmd_route(a):
+    """Stage 4 — fully data-driven. No manual relevance/anchors: ranks by trending +
+    gap-value + theme-fit, where hot themes are derived from the harvest itself."""
+    profiles = json.load(open(a.profiles))
+    hot_themes = set()
+    if a.harvest:
+        docs = json.load(open(a.harvest))
+        hot_themes = {r["theme"].lower() for r in TH.themes(docs)
+                      if r.get("signal") == "CROSS-SOURCE"}
+        # attach each candidate's themes = topics of the docs that mention it
+        for p in profiles:
+            nm = (p.get("candidate") or "").lower()
+            tset = set()
+            for d in docs:
+                hay = " ".join([d.get("name") or ""] + (d.get("claims") or [])).lower()
+                if nm and nm in hay:
+                    tset.update(t for t in (d.get("topics") or []))
+            p["themes"] = sorted(tset)
+        print(f"hot themes (cross-source, data-derived): {', '.join(sorted(hot_themes)) or '(none)'}")
+    cands = [{"name": p.get("candidate"), "velocity": p.get("velocity", 0),
+              "gaps": p.get("gaps") or [], "themes": p.get("themes")} for p in profiles]
+    anchors = set(a.anchors.split(",")) if a.anchors else None  # optional bias only
+    render(route(cands, hot_themes=hot_themes, anchors=anchors))
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -104,6 +131,11 @@ def main():
     dg = sub.add_parser("diagnose")
     dg.add_argument("--space", required=True); dg.add_argument("--candidates", required=True)
     dg.add_argument("--out", default="profiles.json"); dg.set_defaults(fn=cmd_diagnose)
+    rt = sub.add_parser("route")
+    rt.add_argument("--profiles", required=True)
+    rt.add_argument("--harvest", help="harvest.json — enables data-driven theme-fit (recommended)")
+    rt.add_argument("--anchors", help="OPTIONAL operator bias, comma-separated; omit for pure data-driven")
+    rt.set_defaults(fn=cmd_route)
     a = ap.parse_args()
     a.fn(a)
 
