@@ -160,12 +160,27 @@ when velocity ≥ TREND_TAG_FLOOR. Operator reviews; on approval, publish via `g
 **Enrich-vs-create lives here** — a "coverage" gap that's a sub-thing of an existing entity
 (a program inside a lab, a model from a lab) becomes an enrich/link action, not a new entity.
 
-**Publish mechanics — follow `references/stage6-publish.md`, not the generic geo-publish doc.**
-Gap findings go to a DAO space via propose+vote, and several geo-publish defaults silently fail
-here: FAST does NOT auto-execute (you must cast a separate YES vote), the real `voteProposal`
-signature differs from the doc, `type:"url"` is unsupported (use `text`), and dates land in the
-`datetime` field. The reference has the worked target (AI datasets DAO), the exact call shapes,
-and the post-publish verification gotchas.
+**Publish with the generalized publisher — don't hand-author the glue.** Write the accepted
+findings to `drafts.json` (`{target_space, publish_date, discoverer, findings:[{name, description,
+recommended_action, gap_types:[…], subject?, suggested_type?, sources:[…], topics?, tags?}]}`),
+get your personal-space id from geo-publish's `whoami.mjs`, then:
+```
+NODE_PATH=<geo-publish-skill>/node_modules bun --env-file=.env.geo-publish run \
+  scripts/publish_gaps.mjs --findings drafts.json --author <your-personal-space> [--dry-run]
+```
+It works on ANY space: the target datasets space's DAO address + type are resolved at runtime
+(DAO → propose+vote; personal → publishEdit), and the Gap-finding ontology IDs are shared
+constants. `--dry-run` builds + prints ops without submitting; drop it to publish. Mechanics +
+gotchas (FAST needs a separate YES vote; real `voteProposal` sig; `url`→`text`; dates in
+`datetime`) are baked in and documented in `references/stage6-publish.md`.
+
+**Dashboard — build once per space, then reuse.** The findings display is a Topic with live-query
+tables; because they're live, every operator's findings show up automatically. Build it once:
+```
+bun … run scripts/build_dashboard.mjs --space <host> --datasets <datasets-space> --author <you>
+```
+It's **idempotent** — if a dashboard already exists it prints that URL and exits (publish into the
+shared datasets space and your findings appear there); pass `--force` only to build your own.
 
 ## Output
 A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on approval —
@@ -180,6 +195,8 @@ A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
 - `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
 - `scripts/theme_gaps.py` — Stage 5b (theme-level gap diagnosis → theme Gap findings)
+- `scripts/publish_gaps.mjs` — Stage 6 publisher (any space: runtime DAO resolution + shared ontology constants)
+- `scripts/build_dashboard.mjs` — Stage 6 dashboard (build once per space, idempotent reuse; live-query tables)
 - `references/ner_prompt.md` — Stage 2 extraction prompt
 - `references/discovery-schema.md` — the Gap finding entity schema for Stage 6
 - `references/drafting-conventions.md` — human-first naming/description/action + required props (Stage 6)
