@@ -3,3 +3,15 @@ __pycache__/
 .env
 .env.*
 harvest.json
+
+# run outputs (not skill files)
+published.json
+dashboard.json
+harvest*.json
+profiles*.json
+candidates*.json
+drafts*.json
+theme_gaps*.json
+emergent*.json
+*.pyc
+__pycache__/
