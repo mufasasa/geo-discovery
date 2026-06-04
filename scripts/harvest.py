@@ -21,10 +21,34 @@ ENDPOINT = "https://testnet-api.geobrowser.io/graphql"
 NEWS_TYPE = "e550fe517e904b2c8fffdf13408f5634"
 EPISODE_TYPE = "972d201ad78045689e01543f67b26bee"
 PODCASTS_SPACE = "b5a31f8182b042437ede0f84ee02f104"
-# On-domain podcasts are now derived per space by TOPIC OVERLAP (see harvest()), not a
+# On-domain podcasts are derived per space by TOPIC OVERLAP (see harvest()), not a
 # hand-curated allowlist — so the workflow self-configures on any space. An episode is
-# kept iff its Topics overlap the target space's own topic vocabulary (from its news).
-MIN_TOPIC_OVERLAP = 1
+# kept iff its Topics overlap the target space's own DISTINCTIVE topic vocabulary.
+# Default raised to 2 so a single shared (often broad) topic no longer pulls in an
+# off-domain show (the crypto run was leaking Iran/politics/AI podcasts via overlap=1).
+MIN_TOPIC_OVERLAP = 2
+
+# Broad/generic topics are excluded from the overlap test — sharing one of these is NOT
+# evidence an episode is on-domain (a politics show and a crypto-politics story both carry
+# "U.S. politics"). Mirrors theme_heat.BROAD; extend per observed leakage.
+BROAD_TOPICS = {
+    "ai", "business & finance", "technology", "society", "global affairs", "science",
+    "companies & projects", "u.s. politics", "crypto", "cryptocurrencies", "health",
+    "philosophy", "innovation", "debates", "social issues", "investing", "world affairs",
+    "ethics", "corporate strategy", "apps & software", "china", "middle east",
+    "wars & conflicts", "u.s. economy", "geopolitics", "iran & regional influence",
+    "russia-ukraine war", "military operations", "macroeconomic factors affecting crypto markets",
+}
+
+# Pure politics / general-news shows that ride in on a stray shared topic. Episodes from
+# these are dropped regardless of overlap (cheap precision backstop; extend as needed).
+SHOW_DENYLIST = {
+    "up first from npr", "the daily", "the lawfare podcast", "lawfare", "the bulwark podcast",
+    "the commentary magazine podcast", "the dispatch podcast", "the duran podcast",
+    "left, right & center", "the globalist", "the joe rogan experience", "intelligence squared",
+    "call me back - with dan senor", "the bulwark", "tangle", "strict scrutiny",
+    "wsj what's news", "up first", "99% invisible",
+}
 
 
 def gql(query, retries=3, backoff=1.5):
@@ -79,21 +103,39 @@ def _doc(eid):
             "podcast": (names("Podcast") or [""])[0]}
 
 
-def harvest(space_id, days, with_episodes=False, min_overlap=MIN_TOPIC_OVERLAP):
+def harvest(space_id, days, with_episodes=False, min_overlap=MIN_TOPIC_OVERLAP,
+            show_allowlist=None):
+    # show_allowlist: lowercased show names always kept (recall complement). If None, look it
+    # up per-space from space_profile.PODCAST_ALLOWLIST so the workflow self-configures.
+    if show_allowlist is None:
+        try:
+            from space_profile import show_allowlist as _saw
+            show_allowlist = _saw(space_id)
+        except Exception:
+            show_allowlist = set()
     docs = []
     for n in _recent(NEWS_TYPE, space_id, days):
         d = _doc(n["id"]); d["kind"] = "news"; docs.append(d)
     if with_episodes:
-        # the space's topic vocabulary, derived from its own news (lowercased)
+        # the space's DISTINCTIVE topic vocabulary, derived from its own news (lowercased,
+        # broad/generic topics removed so a shared "U.S. politics" doesn't count as on-domain)
         space_topics = {t.lower() for d in docs for t in (d.get("topics") or []) if t}
+        space_topics -= BROAD_TOPICS
         for n in _recent(EPISODE_TYPE, PODCASTS_SPACE, days):
             d = _doc(n["id"])
-            ep_topics = {t.lower() for t in (d.get("topics") or []) if t}
+            show = (d.get("podcast") or "").strip().lower()
+            # precedence: denylist drop > allowlist keep > distinctive-topic-overlap gate
+            if show in SHOW_DENYLIST:
+                continue
+            ep_topics = {t.lower() for t in (d.get("topics") or []) if t} - BROAD_TOPICS
             overlap = ep_topics & space_topics
-            # keep an episode only if its topics overlap the target space (on-domain),
-            # so crypto runs pull crypto shows and AI runs pull AI shows — no allowlist.
-            if len(overlap) >= min_overlap:
-                d["kind"] = "episode"; d["topic_overlap"] = sorted(overlap); docs.append(d)
+            if show in show_allowlist:
+                d["kind"] = "episode"; d["topic_overlap"] = sorted(overlap)
+                d["kept_by"] = "allowlist"; docs.append(d)
+            elif len(overlap) >= min_overlap:
+                # known crypto show? no — kept by sharing >= min_overlap distinctive topics
+                d["kind"] = "episode"; d["topic_overlap"] = sorted(overlap)
+                d["kept_by"] = "topic-overlap"; docs.append(d)
     return docs
 
 

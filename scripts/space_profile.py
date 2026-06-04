@@ -40,6 +40,32 @@ DATASETS_SPACE = {
     "c9f267dcb0d270718c2a3c45a64afd32": "5908c73ad336472ccbd983491d2d17e4",  # crypto -> crypto datasets (DAO 0xf6B3938c48ADdE5C6570d968533601AcC804479b)
 }
 
+# Per-space podcast ALLOWLIST (show names, lowercased). Episodes from these shows are always
+# kept by harvest.py — they bypass the topic-overlap gate so a known on-domain crypto/AI show
+# can't be dropped by a single off-topic week. This is the recall complement to harvest.py's
+# SHOW_DENYLIST (precision) and the topic-overlap test (the self-configuring default for shows
+# not named here). Optional: a space with no entry simply relies on topic-overlap.
+PODCAST_ALLOWLIST = {
+    # crypto
+    "c9f267dcb0d270718c2a3c45a64afd32": {
+        "bankless", "unchained", "0xresearch", "the breakdown", "bitcoin audible",
+        "tftc: a bitcoin podcast", "what bitcoin did", "the pomp podcast", "coin bureau",
+        "the a16z show", "empire", "the chopping block",
+    },
+    # AI (example; extend per space)
+    "41e851610e13a19441c4d980f2f2ce6b": {
+        "latent space: the ai engineer podcast", "machine learning street talk (mlst)",
+        "no priors: artificial intelligence | technology | startups",
+        "the ai daily brief: artificial intelligence news and analysis",
+        '"the cognitive revolution" | ai builders, researchers, and live player analysis',
+    },
+}
+
+
+def show_allowlist(space_id: str) -> set:
+    """Lowercased podcast show names always kept for this space (empty set if none configured)."""
+    return PODCAST_ALLOWLIST.get(space_id, set())
+
 
 def gql(query, retries=3, backoff=1.5):
     body = json.dumps({"query": query}).encode()
@@ -123,6 +149,7 @@ def profile(space_id: str) -> dict:
         "identity_type_ids": idn["ids"],
         "identity_type_names": idn["names"],
         "datasets_space": DATASETS_SPACE.get(space_id),
+        "podcast_allowlist": sorted(show_allowlist(space_id)),
         "_kept": idn["kept"], "_dropped": idn["dropped"],
     }
 

@@ -46,8 +46,9 @@ get a ranked list of gaps worth acting on.
 Run `python3 scripts/space_profile.py <space_id>` to see what the run will use:
 - **Identity types** = the space's own types minus a global content/taxonomy denylist minus
   orphan types. (AI → Model/Provider/Lab/Agent…; crypto → Project/Protocol/Token/Network/DEX…)
-- **On-domain podcasts** = episodes whose Topics overlap the space's own topic vocabulary
-  (no allowlist; `harvest.py` derives it).
+- **On-domain podcasts** = per-episode gates (precedence: deny > allow > topic-overlap): a global
+  `SHOW_DENYLIST` + an optional per-space `PODCAST_ALLOWLIST`, else keep iff the episode shares
+  ≥ `MIN_TOPIC_OVERLAP` **distinctive** topics with the space (`harvest.py` / `space_profile.py`).
 - **Publish target** = the space's datasets space from `space_profile.DATASETS_SPACE` (add one
   line per space; reuses the shared Gap-finding ontology by ID).
 New space → no config edits; only add its datasets-space mapping before Stage 6.
@@ -74,8 +75,15 @@ New space → no config edits; only add its datasets-space mapping before Stage 
 python3 scripts/run.py harvest --space <space_id> --days 2 --with-episodes --out harvest.json
 ```
 (prints the auto-derived profile banner, then harvests). → `harvest.json`: recent News stories
-(+ topic-matched podcast episodes) with their `claims[]` and `topics[]`. Episodes are kept by
-topic-overlap with the space — no allowlist.
+(space-scoped) + on-domain podcast episodes, with their `claims[]` and `topics[]`.
+**News is space-scoped** (only the target space's stories). **Episode relevance** is decided
+per-episode with three gates (precedence: deny > allow > topic-overlap):
+- `SHOW_DENYLIST` (harvest.py) — pure politics/general-news shows are dropped outright.
+- `PODCAST_ALLOWLIST` (space_profile.py, per space) — known on-domain shows are always kept,
+  so a single off-topic week can't drop e.g. *What Bitcoin Did*.
+- otherwise: keep iff the episode shares ≥ `MIN_TOPIC_OVERLAP` (default 2) **distinctive**
+  topics with the space (broad/generic topics in `BROAD_TOPICS` don't count — a shared
+  "U.S. politics" is not evidence of on-domain).
 
 ### Stage 2 — Extract candidates (NER)  ·  Automated (LLM)
 Read `harvest.json`. Following `references/ner_prompt.md`, extract the distinct named
@@ -123,6 +131,27 @@ taxonomy (exact-name + Topic-type filtered) and emits a **theme-level gap**:
 Themes are first-class discovery output, not just a heat map: each theme gap becomes a
 `Gap finding` (structuring work — build/attach/develop a topic page; feeds `page-developer`).
 
+**Bounded by upstream tags.** `theme_heat`/`theme_gaps` cluster Topics ALREADY ATTACHED to
+the harvested stories, so they can only re-surface themes the taxonomy already knows. They are
+blind to genuinely-new themes that recur in the claim TEXT but have no Topic yet. Stage 5c fixes that.
+
+### Stage 5c — Emergent-theme discovery  ·  LLM + Automated (wider/periodic runs)
+The model-driven complement to 5a/5b. **Run on the wider/periodic runs** (e.g. 30-day), not every
+daily cycle — it costs a full read of the claim corpus.
+1. **(LLM — you)** read the harvested claims and PROPOSE candidate emergent theme names — patterns
+   that recur across stories but may have NO Topic yet (e.g. "physical attacks on crypto holders",
+   "Bitcoin ATM regulation"). Write them to a JSON file: `[{"name":"…","synonyms":["…"]}]`.
+2. **(script)** run the existence ladder + **variant reconciliation** deterministically:
+```
+python3 scripts/theme_emergent.py --space <space_id> --themes emergent.json
+```
+   Verdicts: `IN-SPACE` (already covered) · `VARIANT` (a name variant already in-space → do NOT
+   create, would duplicate) · `ELSEWHERE` (exact Topic in another canonical space → bring it in) ·
+   `CREATE` (genuinely emergent → file a `Coverage(theme)` finding, tagged `Theme`). The `VARIANT`
+   guard is what prevents duplicate topics ("Real-world asset tokenization" vs existing
+   "Real World Assets", "Restaking" vs "Liquid restaking"). Only `CREATE` (and chosen `ELSEWHERE`)
+   become Gap findings.
+
 ### Stage 6 — Publish discoveries  ·  Human-in-loop (review gate)
 Draft a `Gap finding` per accepted gap — entity-level AND theme-level — following
 `references/drafting-conventions.md` (human-first name/description/action) and
@@ -143,9 +172,10 @@ A ranked Gap finding set (two tracks) + a theme map with depth tiers, and — on
 `Gap finding` entities published to the space (status `Proposed`).
 
 ## Files
-- `scripts/space_profile.py` — auto-derives identity types + datasets target per space (the global denylist lives here)
+- `scripts/space_profile.py` — auto-derives identity types + datasets target per space (global type denylist + per-space `PODCAST_ALLOWLIST` live here)
 - `scripts/run.py` — driver: `profile` / `harvest` / `diagnose` subcommands (progress + structured output; run this instead of authoring glue)
-- `scripts/harvest.py` — Stage 1 (topic-overlap episode filter)
+- `scripts/harvest.py` — Stage 1 (episode filter: deny > allow > distinctive-topic-overlap; `BROAD_TOPICS`/`SHOW_DENYLIST` here)
+- `scripts/theme_emergent.py` — Stage 5c (emergent-theme existence ladder + variant reconciliation)
 - `scripts/gap_diagnostic.py` — Stage 3 (5-gap diagnostic; exact-name + normalized type-scoped fuzzy fallback)
 - `scripts/prioritize.py` — Stage 4 (gate + two-track rank)
 - `scripts/theme_heat.py` — Stage 5 (theme clustering + cross-source classification)
