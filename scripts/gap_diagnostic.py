@@ -197,8 +197,23 @@ def exact_entities(name: str, space_id: str = AI_SPACE) -> list[dict]:
          f'filter:{{name:{{isInsensitive:"{_esc(name)}"}}}}) '
          f'{{ nodes {{ id name updatedAt types {{ name }} '
          f'values(first:60){{ nodes {{ property {{ name }} text }} }} '
-         f'relations(first:200){{ nodes {{ type {{ name }} }} }} }} }} }}')
+         f'relations(first:200){{ nodes {{ spaceId type {{ name }} toEntity {{ name }} }} }} }} }} }}')
     return (gql(q).get("entitiesConnection") or {}).get("nodes") or []
+
+
+def _space_types(e: dict, space_id: str) -> list[str]:
+    """Type names asserted on this entity WITHIN the target space only (via Types relations).
+
+    The aggregated `types {name}` field unions every space's perspective, so an entity that
+    another space (e.g. a personal/root space) blanket-types as `Project` looks like an
+    in-space duplicate. Counting only the target space's Types relations fixes that —
+    otherwise STRUCTURAL dup-type findings false-positive en masse. Falls back to the
+    aggregated types if no in-space Types relation is visible."""
+    st = [(r.get("toEntity") or {}).get("name")
+          for r in (e.get("relations") or {}).get("nodes") or []
+          if (r.get("type") or {}).get("name") == "Types"
+          and r.get("spaceId") == space_id and (r.get("toEntity") or {}).get("name")]
+    return st or [t["name"] for t in (e.get("types") or [])]
 
 
 def _meaningful_rels(e: dict) -> int:
@@ -244,7 +259,9 @@ def diagnose(name: str, space_id: str = AI_SPACE, velocity: int = 0) -> dict:
 
     best = max(ident, key=_meaningful_rels)
     br = _meaningful_rels(best)
-    types = [t["name"] for t in (best.get("types") or [])]
+    # SPACE-SCOPED types — count only what the target space asserts, so a foreign space's
+    # blanket `Project` typing doesn't read as an in-space duplicate (see _space_types).
+    types = _space_types(best, space_id)
     gaps, detail = [], {"canonical": f"{best['name']} [{','.join(types)}] {br} rels", "id": best["id"]}
 
     # STRUCTURAL — (a) >1 same-name identity entity (dedup/merge), OR
